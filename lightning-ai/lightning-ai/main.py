@@ -7,6 +7,7 @@ from groq import Groq
 import os
 import httpx
 import urllib.parse
+import sqlite3
 
 app = FastAPI()
 
@@ -22,6 +23,24 @@ client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 # In-memory chat history (simple version - server restart aana poidum)
 chat_history = {}
+def init_db():
+    conn = sqlite3.connect("chat.db")
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS chat_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT,
+        question TEXT,
+        answer TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+init_db()
 
 # Text chat model - groq/compound has built-in web search + code execution,
 # so it can answer current-events questions and verify math/code automatically.
@@ -43,6 +62,17 @@ BLOCKED_TERMS = [
 def is_prompt_safe(prompt: str) -> bool:
     lowered = prompt.lower()
     return not any(term in lowered for term in BLOCKED_TERMS)
+def save_chat(session_id, question, answer):
+    conn = sqlite3.connect("chat.db")
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT INTO chat_history(session_id, question, answer)
+        VALUES (?, ?, ?)
+    """, (session_id, question, answer))
+
+    conn.commit()
+    conn.close()
 
 
 class ChatRequest(BaseModel):
@@ -64,6 +94,7 @@ def chat(req: ChatRequest):
         )
         reply = response.choices[0].message.content
         history.append({"role": "assistant", "content": reply})
+        save_chat(req.session_id, req.message, reply)
         chat_history[req.session_id] = history[-20:]  # last 20 messages mattum vekkanga
         return {"reply": reply}
     except Exception as e:
