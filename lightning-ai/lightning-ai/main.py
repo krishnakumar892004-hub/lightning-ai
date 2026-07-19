@@ -89,12 +89,13 @@ def chat(req: ChatRequest):
         response = client.chat.completions.create(
             model=CHAT_MODEL,
             messages=[
-                {"role": "system", "content": "You are Lightning AI, a helpful and friendly assistant."}
+                {"role": "system", "content": "You are Lightning AI"},
+                {"role":"user","content":req.message}
             ] + history,
         )
         reply = response.choices[0].message.content
-        history.append({"role": "assistant", "content": reply})
         save_chat(req.session_id, req.message, reply)
+        history.append({"role": "assistant", "content": reply})
         chat_history[req.session_id] = history[-20:]  # last 20 messages mattum vekkanga
         return {"reply": reply}
     except Exception as e:
