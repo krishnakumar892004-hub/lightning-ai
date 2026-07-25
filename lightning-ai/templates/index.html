@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lightning AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <svg viewBox="0 0 48 48" class="brand-bolt"><path d="M26 2 L8 28 H21 L18 46 L40 18 H27 Z"/></svg>
+        <span>Lightning AI</span>
+      </div>
+      <button class="new-chat-btn" id="newChatBtn">+ New Chat</button>
+    </div>
+
+    <div class="history-list" id="historyList">
+      <!-- history items injected by JS -->
+    </div>
+
+    <div class="sidebar-bottom">
+      <img src="{{ user.profile_pic }}" alt="" class="avatar" onerror="this.style.display='none'">
+      <div class="user-info">
+        <div class="user-name">{{ user.name }}</div>
+        <div class="user-email">{{ user.email }}</div>
+      </div>
+      <a href="{{ url_for('logout') }}" class="logout-link" title="Logout">⏻</a>
+    </div>
+  </aside>
+
+  <!-- Main chat -->
+  <main class="main">
+    <header class="topbar">
+      <button class="menu-toggle" id="menuToggle">☰</button>
+      <div class="mode-switch" id="modeSwitch">
+        <button class="mode-btn active" data-mode="chat">💬 Ask</button>
+        <button class="mode-btn" data-mode="image">⚡ Create Image</button>
+      </div>
+    </header>
+
+    <section class="chat-area" id="chatArea">
+      <div class="welcome" id="welcomeScreen">
+        <svg viewBox="0 0 48 48" class="welcome-bolt"><path d="M26 2 L8 28 H21 L18 46 L40 18 H27 Z"/></svg>
+        <h2>What can I strike up for you today?</h2>
+        <p>Ask a question, generate an image, or upload a photo and ask about it.</p>
+      </div>
+    </section>
+
+    <form class="composer" id="composerForm">
+      <button type="button" class="attach-btn" id="attachBtn" title="Upload image">📎</button>
+      <input type="file" id="imageInput" accept="image/*" hidden>
+      <div id="imagePreviewWrap" class="image-preview-wrap" hidden>
+        <img id="imagePreview" alt="preview">
+        <button type="button" id="removeImage">✕</button>
+      </div>
+      <textarea id="messageInput" placeholder="Ask Lightning AI anything..." rows="1"></textarea>
+      <button type="submit" class="send-btn" id="sendBtn" title="Send">
+        <svg viewBox="0 0 48 48"><path d="M26 2 L8 28 H21 L18 46 L40 18 H27 Z"/></svg>
+      </button>
+    </form>
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
