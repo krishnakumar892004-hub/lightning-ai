@@ -3,13 +3,16 @@ Lightning AI - Full Stack AI Chat Web Application
 Backend: Flask (Python)
 Database: MySQL (SQLAlchemy)
 Auth: Google OAuth (Gmail Login)
-AI: Google Gemini API (Chat + Image Generation + Vision/Image understanding)
+AI: Groq API (Chat + Vision/Image understanding)
+Image generation: Pollinations.ai (free, no API key needed — Groq has no image-gen model)
 """
 
 import os
 import base64
+import urllib.parse
 from datetime import datetime
 
+import requests
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -19,9 +22,7 @@ from flask_login import (
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
-
-from google import genai
-from google.genai import types
+from groq import Groq
 
 load_dotenv()
 
@@ -59,13 +60,12 @@ google_oauth = oauth.register(
 )
 
 # ---------------------------------------------------------------------------
-# Gemini client
+# Groq client
 # ---------------------------------------------------------------------------
-gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-GEMINI_TEXT_MODEL = "gemini-2.0-flash"
-GEMINI_VISION_MODEL = "gemini-2.0-flash"
-GEMINI_IMAGE_GEN_MODEL = "gemini-2.0-flash-preview-image-generation"
+GROQ_TEXT_MODEL = "llama-3.3-70b-versatile"
+GROQ_VISION_MODEL = "llama-3.2-90b-vision-preview"
 
 UPLOAD_FOLDER = os.path.join(app.root_path, "static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -157,7 +157,7 @@ def index():
 
 
 # ---------------------------------------------------------------------------
-# API: Chat (text question -> AI answer) — Gemini text generation
+# API: Chat (text question -> AI answer) — Groq chat completion
 # ---------------------------------------------------------------------------
 @app.route("/api/chat", methods=["POST"])
 @login_required
@@ -168,14 +168,14 @@ def api_chat():
         return jsonify({"error": "Message is empty"}), 400
 
     try:
-        response = gemini_client.models.generate_content(
-            model=GEMINI_TEXT_MODEL,
-            contents=message,
-            config=types.GenerateContentConfig(
-                system_instruction="You are Lightning AI, a helpful, friendly assistant.",
-            ),
+        response = groq_client.chat.completions.create(
+            model=GROQ_TEXT_MODEL,
+            messages=[
+                {"role": "system", "content": "You are Lightning AI, a helpful, friendly assistant."},
+                {"role": "user", "content": message},
+            ],
         )
-        answer = response.text
+        answer = response.choices[0].message.content
     except Exception as exc:
         return jsonify({"error": f"AI request failed: {exc}"}), 500
 
@@ -192,7 +192,8 @@ def api_chat():
 
 
 # ---------------------------------------------------------------------------
-# API: Image generation (prompt -> image) — Gemini image generation
+# API: Image generation (prompt -> image)
+# Groq has no image-generation model, so we use Pollinations.ai (free, no key)
 # ---------------------------------------------------------------------------
 @app.route("/api/generate-image", methods=["POST"])
 @login_required
@@ -203,22 +204,14 @@ def api_generate_image():
         return jsonify({"error": "Prompt is empty"}), 400
 
     try:
-        response = gemini_client.models.generate_content(
-            model=GEMINI_IMAGE_GEN_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["TEXT", "IMAGE"],
-            ),
+        encoded_prompt = urllib.parse.quote(prompt)
+        pollinations_url = (
+            f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+            f"?width=1024&height=1024&nologo=true"
         )
-
-        image_bytes = None
-        for part in response.candidates[0].content.parts:
-            if part.inline_data is not None:
-                image_bytes = part.inline_data.data
-                break
-
-        if not image_bytes:
-            return jsonify({"error": "Gemini did not return an image. Try a different prompt."}), 500
+        img_response = requests.get(pollinations_url, timeout=60)
+        img_response.raise_for_status()
+        image_bytes = img_response.content
 
         filename = f"gen_{current_user.id}_{int(datetime.utcnow().timestamp())}.png"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
@@ -242,7 +235,7 @@ def api_generate_image():
 
 
 # ---------------------------------------------------------------------------
-# API: Upload image + ask question about it — Gemini vision
+# API: Upload image + ask question about it — Groq vision model
 # ---------------------------------------------------------------------------
 @app.route("/api/upload-image", methods=["POST"])
 @login_required
@@ -259,20 +252,28 @@ def api_upload_image():
     file.save(filepath)
 
     with open(filepath, "rb") as f:
-        image_bytes = f.read()
+        image_b64 = base64.b64encode(f.read()).decode("utf-8")
 
     mime_type = file.mimetype or "image/jpeg"
     image_url = url_for("static", filename=f"uploads/{unique_name}")
 
     try:
-        response = gemini_client.models.generate_content(
-            model=GEMINI_VISION_MODEL,
-            contents=[
-                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                question,
+        response = groq_client.chat.completions.create(
+            model=GROQ_VISION_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": question},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{image_b64}"},
+                        },
+                    ],
+                }
             ],
         )
-        answer = response.text
+        answer = response.choices[0].message.content
     except Exception as exc:
         return jsonify({"error": f"Image analysis failed: {exc}"}), 500
 
