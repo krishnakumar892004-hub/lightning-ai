@@ -65,7 +65,7 @@ google_oauth = oauth.register(
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 GROQ_TEXT_MODEL = "llama-3.3-70b-versatile"
-GROQ_VISION_MODEL = "llama-3.2-90b-vision-preview"
+GROQ_VISION_MODEL = "mata-llama/llama-4-scout-17b-16e-instruct"
 
 UPLOAD_FOLDER = os.path.join(app.root_path, "static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
