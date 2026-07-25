@@ -3,7 +3,7 @@ Lightning AI - Full Stack AI Chat Web Application
 Backend: Flask (Python)
 Database: MySQL (SQLAlchemy)
 Auth: Google OAuth (Gmail Login)
-AI: OpenAI API (Chat + Image Generation + Vision/Image understanding)
+AI: Google Gemini API (Chat + Image Generation + Vision/Image understanding)
 """
 
 import os
@@ -18,8 +18,10 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
-from openai import OpenAI
 from werkzeug.utils import secure_filename
+
+from google import genai
+from google.genai import types
 
 load_dotenv()
 
@@ -48,7 +50,7 @@ login_manager.init_app(app)
 login_manager.login_view = "login"
 
 oauth = OAuth(app)
-google = oauth.register(
+google_oauth = oauth.register(
     name="google",
     client_id=os.environ.get("GOOGLE_CLIENT_ID"),
     client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
@@ -56,7 +58,14 @@ google = oauth.register(
     client_kwargs={"scope": "openid email profile"},
 )
 
-openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# ---------------------------------------------------------------------------
+# Gemini client
+# ---------------------------------------------------------------------------
+gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+
+GEMINI_TEXT_MODEL = "gemini-2.0-flash"
+GEMINI_VISION_MODEL = "gemini-2.0-flash"
+GEMINI_IMAGE_GEN_MODEL = "gemini-2.0-flash-preview-image-generation"
 
 UPLOAD_FOLDER = os.path.join(app.root_path, "static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -106,15 +115,15 @@ def login():
 @app.route("/login/google")
 def login_google():
     redirect_uri = url_for("auth_callback", _external=True)
-    return google.authorize_redirect(redirect_uri)
+    return google_oauth.authorize_redirect(redirect_uri)
 
 
 @app.route("/auth/callback")
 def auth_callback():
-    token = google.authorize_access_token()
+    token = google_oauth.authorize_access_token()
     user_info = token.get("userinfo")
     if not user_info:
-        user_info = google.get("https://openidconnect.googleapis.com/v1/userinfo").json()
+        user_info = google_oauth.get("https://openidconnect.googleapis.com/v1/userinfo").json()
 
     google_id = user_info["sub"]
     email = user_info["email"]
@@ -148,7 +157,7 @@ def index():
 
 
 # ---------------------------------------------------------------------------
-# API: Chat (text question -> AI answer)
+# API: Chat (text question -> AI answer) — Gemini text generation
 # ---------------------------------------------------------------------------
 @app.route("/api/chat", methods=["POST"])
 @login_required
@@ -159,14 +168,14 @@ def api_chat():
         return jsonify({"error": "Message is empty"}), 400
 
     try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are Lightning AI, a helpful, friendly assistant."},
-                {"role": "user", "content": message},
-            ],
+        response = gemini_client.models.generate_content(
+            model=GEMINI_TEXT_MODEL,
+            contents=message,
+            config=types.GenerateContentConfig(
+                system_instruction="You are Lightning AI, a helpful, friendly assistant.",
+            ),
         )
-        answer = response.choices[0].message.content
+        answer = response.text
     except Exception as exc:
         return jsonify({"error": f"AI request failed: {exc}"}), 500
 
@@ -183,7 +192,7 @@ def api_chat():
 
 
 # ---------------------------------------------------------------------------
-# API: Image generation (prompt -> image)
+# API: Image generation (prompt -> image) — Gemini image generation
 # ---------------------------------------------------------------------------
 @app.route("/api/generate-image", methods=["POST"])
 @login_required
@@ -194,13 +203,22 @@ def api_generate_image():
         return jsonify({"error": "Prompt is empty"}), 400
 
     try:
-        result = openai_client.images.generate(
-            model="gpt-image-1",
-            prompt=prompt,
-            size="1024x1024",
+        response = gemini_client.models.generate_content(
+            model=GEMINI_IMAGE_GEN_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["TEXT", "IMAGE"],
+            ),
         )
-        image_b64 = result.data[0].b64_json
-        image_bytes = base64.b64decode(image_b64)
+
+        image_bytes = None
+        for part in response.candidates[0].content.parts:
+            if part.inline_data is not None:
+                image_bytes = part.inline_data.data
+                break
+
+        if not image_bytes:
+            return jsonify({"error": "Gemini did not return an image. Try a different prompt."}), 500
 
         filename = f"gen_{current_user.id}_{int(datetime.utcnow().timestamp())}.png"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
@@ -224,7 +242,7 @@ def api_generate_image():
 
 
 # ---------------------------------------------------------------------------
-# API: Upload image + ask question about it (vision)
+# API: Upload image + ask question about it — Gemini vision
 # ---------------------------------------------------------------------------
 @app.route("/api/upload-image", methods=["POST"])
 @login_required
@@ -241,27 +259,20 @@ def api_upload_image():
     file.save(filepath)
 
     with open(filepath, "rb") as f:
-        image_b64 = base64.b64encode(f.read()).decode("utf-8")
+        image_bytes = f.read()
 
+    mime_type = file.mimetype or "image/jpeg"
     image_url = url_for("static", filename=f"uploads/{unique_name}")
 
     try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": question},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
-                        },
-                    ],
-                }
+        response = gemini_client.models.generate_content(
+            model=GEMINI_VISION_MODEL,
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                question,
             ],
         )
-        answer = response.choices[0].message.content
+        answer = response.text
     except Exception as exc:
         return jsonify({"error": f"Image analysis failed: {exc}"}), 500
 
