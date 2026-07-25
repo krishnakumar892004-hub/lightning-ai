@@ -2,18 +2,18 @@
    Lightning AI — Design Tokens
    ========================================================= */
 :root {
-  --bg: #0a0c14;
-  --bg-panel: #10131d;
-  --bg-panel-2: #151926;
-  --bg-elevated: #1b2032;
-  --border: #262c40;
+  --bg: #ffffff;
+  --bg-panel: #ffffff;
+  --bg-panel-2: #f8f9fa;
+  --bg-elevated: #ffffff;
+  --border: #dddddd;
 
   --electric-blue: #4f7cff;
   --electric-violet: #9b5cff;
   --spark: #f5e663;
   --spark-dim: #d8c94a;
 
-  --text: #eceffa;
+  --text: #111111;
   --text-dim: #8b92ab;
   --text-faint: #5b6280;
 
