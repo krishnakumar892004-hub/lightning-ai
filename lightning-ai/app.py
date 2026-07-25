@@ -211,6 +211,10 @@ def api_generate_image():
         )
         img_response = requests.get(pollinations_url, timeout=60)
         img_response.raise_for_status()
+        content_type = img_response.headers.get("Content-Type", "")
+        if not content_type.startswith("image/"):
+             return jsonify({
+                  "error": f"Pollinations returned text instead of an image: {img_response.text}" }), 500
         image_bytes = img_response.content
 
         filename = f"gen_{current_user.id}_{int(datetime.utcnow().timestamp())}.png"
