@@ -32,15 +32,21 @@ load_dotenv()
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this-secret-key")
 
-db_user = os.environ.get("DB_USER", "root")
-db_pass = os.environ.get("DB_PASSWORD", "")
-db_host = os.environ.get("DB_HOST", "localhost")
-db_port = os.environ.get("DB_PORT", "3306")
-db_name = os.environ.get("DB_NAME", "lightning_ai")
+database_url = os.environ.get("DATABASE_URL")
 
-app.config["SQLALCHEMY_DATABASE_URI"] = (
-    f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-)
+if database_url:
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+else:
+    db_user = os.environ.get("DB_USER", "root")
+    db_pass = os.environ.get("DB_PASSWORD", "")
+    db_host = os.environ.get("DB_HOST", "localhost")
+    db_port = os.environ.get("DB_PORT", "3306")
+    db_name = os.environ.get("DB_NAME", "lightning_ai")
+
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+    )
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024  # 8 MB upload limit
 
